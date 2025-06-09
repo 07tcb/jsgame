@@ -1,13 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
   <meta charset="UTF-8">
-  <title>spacewar av tinder; prototyp</title>
+  <title>Spacewar av tinder</title>
   <style>
     body {
       margin: 0;
+      background-color: black;
+      color: white;
+      font-family: monospace;
       overflow: hidden;
-      background: black;
+    }
+    #menu {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    #menu button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
     }
     canvas {
       display: block;
@@ -15,6 +30,11 @@
   </style>
 </head>
 <body>
+  <div id="menu">
+    <h1>SPACEWAR</h1>
+    <button onclick="startGame('pvp')">PVP</button>
+    <button onclick="startGame('pve')">PVE</button>
+  </div>
   <canvas id="gameCanvas"></canvas>
   <script src="spacewar.js"></script>
 </body>

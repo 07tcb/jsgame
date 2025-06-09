@@ -1,66 +1,68 @@
-const c = document.getElementById('gameCanvas');
-const ctx = c.getContext('2d');
-let pressed = {};
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let keys = {};
+let player1, player2;
+let gameMode = 'pvp';
 
-function fitScreen() {
-  c.width = window.innerWidth;
-  c.height = window.innerHeight;
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
-window.addEventListener('resize', fitScreen);
-fitScreen();
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
 class Player {
-  constructor(x, y, clr, keys) {
+  constructor(x, y, color, controls = {}) {
     this.x = x;
     this.y = y;
     this.vx = 0;
     this.vy = 0;
-    this.a = 0;
-    this.clr = clr;
-    this.k = keys;
+    this.angle = 0;
+    this.color = color;
+    this.controls = controls;
     this.shots = [];
-    this.cool = 0;
+    this.cooldown = 0;
+    this.hp = 3;
   }
 
-  move() {
-    if (pressed[this.k.left]) this.a -= 0.05;
-    if (pressed[this.k.right]) this.a += 0.05;
-    if (pressed[this.k.thrust]) {
-      this.vx += Math.cos(this.a) * 0.05;
-      this.vy += Math.sin(this.a) * 0.05;
+  update(isAI = false) {
+    if (!isAI) {
+      if (keys[this.controls.left]) this.angle -= 0.05;
+      if (keys[this.controls.right]) this.angle += 0.05;
+      if (keys[this.controls.thrust]) {
+        this.vx += Math.cos(this.angle) * 0.05;
+        this.vy += Math.sin(this.angle) * 0.05;
+      }
+      if (keys[this.controls.fire] && this.cooldown <= 0) {
+        this.shoot();
+        this.cooldown = 20;
+      }
     }
-    if (pressed[this.k.fire] && this.cool <= 0) {
-      this.fire();
-      this.cool = 20;
-    }
-    this.cool--;
 
-    // friktion
+    this.cooldown--;
     this.vx *= 0.98;
     this.vy *= 0.98;
-
     this.x += this.vx;
     this.y += this.vy;
 
-    // screen wrapping
-    if (this.x < 0) this.x = c.width;
-    else if (this.x > c.width) this.x = 0;
-    if (this.y < 0) this.y = c.height;
-    else if (this.y > c.height) this.y = 0;
+    if (this.x < 0) this.x = canvas.width;
+    else if (this.x > canvas.width) this.x = 0;
+    if (this.y < 0) this.y = canvas.height;
+    else if (this.y > canvas.height) this.y = 0;
 
-    this.shots.forEach(s => s.move());
-    this.shots = this.shots.filter(s => s.live());
+    this.shots.forEach(s => s.update());
+    this.shots = this.shots.filter(s => s.isAlive());
   }
 
-  fire() {
-    this.shots.push(new Shot(this.x, this.y, this.a, this.clr));
+  shoot() {
+    this.shots.push(new Shot(this.x, this.y, this.angle, this.color));
   }
 
   render() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.rotate(this.a);
-    ctx.fillStyle = this.clr;
+    ctx.rotate(this.angle);
+    ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.moveTo(10, 0);
     ctx.lineTo(-10, -7);
@@ -71,63 +73,142 @@ class Player {
 
     this.shots.forEach(s => s.render());
   }
+
+  checkHit(enemyShots) {
+    enemyShots.forEach((shot, i) => {
+      const dx = this.x - shot.x;
+      const dy = this.y - shot.y;
+      if (dx * dx + dy * dy < 20 * 20) {
+        this.hp--;
+        enemyShots.splice(i, 1);
+      }
+    });
+  }
 }
 
 class Shot {
-  constructor(x, y, a, clr) {
+  constructor(x, y, angle, color) {
     this.x = x;
     this.y = y;
-    this.a = a;
-    this.clr = clr;
-    this.s = 5;
+    this.angle = angle;
+    this.color = color;
+    this.speed = 5;
   }
 
-  move() {
-    this.x += Math.cos(this.a) * this.s;
-    this.y += Math.sin(this.a) * this.s;
+  update() {
+    this.x += Math.cos(this.angle) * this.speed;
+    this.y += Math.sin(this.angle) * this.speed;
   }
 
-  live() {
-    return this.x > 0 && this.x < c.width && this.y > 0 && this.y < c.height;
+  isAlive() {
+    return this.x > 0 && this.x < canvas.width && this.y > 0 && this.y < canvas.height;
   }
 
   render() {
-    ctx.fillStyle = this.clr;
+    ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-const p1 = new Player(100, 300, 'crimson', {
-  left: 'a',
-  right: 'd',
-  thrust: 'w',
-  fire: 's'
-});
+function aiControl(ai, target) {
+  const dx = target.x - ai.x;
+  const dy = target.y - ai.y;
+  const targetAngle = Math.atan2(dy, dx);
+  const angleDiff = ((targetAngle - ai.angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 
-const p2 = new Player(700, 300, 'royalblue', {
-  left: 'ArrowLeft',
-  right: 'ArrowRight',
-  thrust: 'ArrowUp',
-  fire: 'ArrowDown'
-});
+  if (angleDiff > 0.1) ai.angle += 0.03;
+  else if (angleDiff < -0.1) ai.angle -= 0.03;
+
+  if (Math.random() < 0.7) {
+    ai.vx += Math.cos(ai.angle) * 0.03;
+    ai.vy += Math.sin(ai.angle) * 0.03;
+  }
+
+  if (Math.abs(angleDiff) < 0.2 && ai.cooldown <= 0) {
+    ai.shoot();
+    ai.cooldown = 30;
+  }
+
+  ai.cooldown--;
+}
+
+function drawHUD() {
+  ctx.fillStyle = 'white';
+  ctx.font = '20px monospace';
+  ctx.fillText(`Spelare 1 HP: ${player1.hp}`, 20, 30);
+  ctx.fillText(`Fiende HP: ${player2.hp}`, canvas.width - 160, 30);
+}
+
+function resetGame() {
+  player1.x = canvas.width * 0.25;
+  player1.y = canvas.height / 2;
+  player1.vx = player1.vy = 0;
+  player1.angle = 0;
+  player1.hp = 3;
+  player1.shots = [];
+
+  player2.x = canvas.width * 0.75;
+  player2.y = canvas.height / 2;
+  player2.vx = player2.vy = 0;
+  player2.angle = Math.PI;
+  player2.hp = 3;
+  player2.shots = [];
+}
 
 function tick() {
-  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  p1.move();
-  p1.render();
+  if (gameMode === 'pve') aiControl(player2, player1);
 
-  p2.move();
-  p2.render();
+  player1.update();
+  player1.render();
+  player1.checkHit(player2.shots);
+
+  player2.update(gameMode === 'pve');
+  player2.render();
+  player2.checkHit(player1.shots);
+
+  drawHUD();
+
+  if (player1.hp <= 0 || player2.hp <= 0) {
+    ctx.fillStyle = 'white';
+    ctx.font = '40px monospace';
+    const winner = player1.hp > 0 ? "Spelare 1 vann!" : "Fienden vann!";
+    ctx.fillText(winner, canvas.width / 2 - 120, canvas.height / 2);
+    setTimeout(resetGame, 2000);
+    setTimeout(tick, 2000);
+    return;
+  }
 
   requestAnimationFrame(tick);
 }
 
-document.addEventListener('keydown', e => pressed[e.key] = true);
-document.addEventListener('keyup', e => pressed[e.key] = false);
+function startGame(mode) {
+  document.getElementById('menu').style.display = 'none';
+  gameMode = mode;
 
-tick();
+  player1 = new Player(canvas.width * 0.25, canvas.height / 2, 'crimson', {
+    left: 'a',
+    right: 'd',
+    thrust: 'w',
+    fire: 's'
+  });
 
-//ändra startpos för p1 o p2
+  if (gameMode === 'pvp') {
+    player2 = new Player(canvas.width * 0.75, canvas.height / 2, 'royalblue', {
+      left: 'ArrowLeft',
+      right: 'ArrowRight',
+      thrust: 'ArrowUp',
+      fire: 'ArrowDown'
+    });
+  } else {
+    player2 = new Player(canvas.width * 0.75, canvas.height / 2, 'royalblue');
+  }
+
+  tick();
+}
+
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
